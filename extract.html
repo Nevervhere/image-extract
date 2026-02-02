@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="ru">
+<meta charset="UTF-8">
+
+<h3>Извлечь данные</h3>
+
+<input type="file" id="file"><br><br>
+<input type="password" id="password" placeholder="Пароль"><br><br>
+<button onclick="extract()">Извлечь</button>
+
+<pre id="output"></pre>
+
+<script>
+async function extract() {
+  const file = document.getElementById("file").files[0];
+  const password = document.getElementById("password").value;
+  if (!file || !password) return alert("Выбери файл и введи пароль");
+
+  const img = await createImageBitmap(file);
+  const c = document.createElement("canvas");
+  c.width = img.width;
+  c.height = img.height;
+  const ctx = c.getContext("2d");
+  ctx.drawImage(img, 0, 0);
+  const data = ctx.getImageData(0, 0, c.width, c.height).data;
+
+  let bits = "";
+  for (let i = 0; i < data.length; i += 4) {
+    bits += (data[i] & 1);
+  }
+
+  let bytes = [];
+  for (let i = 0; i < bits.length; i += 8) {
+    bytes.push(parseInt(bits.slice(i, i + 8), 2));
+  }
+
+  const view = new DataView(new Uint8Array(bytes).buffer);
+  const encLen = view.getUint32(0);
+  const nonce = new Uint8Array(bytes.slice(4, 16));
+  const encrypted = new Uint8Array(bytes.slice(16, 16 + encLen));
+
+  const key = await crypto.subtle.importKey(
+    "raw",
+    await crypto.subtle.digest("SHA-256", new TextEncoder().encode(password)),
+    { name: "AES-GCM" },
+    false,
+    ["decrypt"]
+  );
+
+  try {
+    const decrypted = await crypto.subtle.decrypt(
+      { name: "AES-GCM", iv: nonce },
+      key,
+      encrypted
+    );
+    document.getElementById("output").textContent =
+      new TextDecoder().decode(decrypted);
+  } catch {
+    alert("Неверный пароль");
+  }
+}
+</script>
+</html>
+
